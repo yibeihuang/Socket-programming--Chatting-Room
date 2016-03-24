@@ -6,8 +6,8 @@ import sys, os, re
 import mmap, threading, select, hashlib
 import time
 
-os.environ['BLOCK_TIME'] = '10'  # environment variable
-os.environ['TIME_OUT'] = '500'
+os.environ['BLOCK_TIME'] = '60'  # environment variable
+os.environ['TIME_OUT'] = '1800'
 logout_time = {}  # record the time of last logout for each user in a dictionary
 loggedin = []  # record all the users that is logged in
 threads = []

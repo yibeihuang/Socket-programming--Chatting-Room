@@ -7,7 +7,7 @@ import mmap, threading, select, hashlib
 import time
 
 os.environ['BLOCK_TIME'] = '10'  # environment variable
-os.environ['TIME_OUT'] = '50'
+os.environ['TIME_OUT'] = '500'
 logout_time = {}  # record the time of last logout for each user in a dictionary
 loggedin = []  # record all the users that is logged in
 threads = []
@@ -200,33 +200,57 @@ class client_handler(threading.Thread):
 
 	#send messages
 	def hdlr_send(self, args):
-		argstring = args
 		if not args:
 			try:
 				self.sock.send('wrong arguments\n')
 			except:
-				pass
-		if '(' in argstring.split(' ')[0]: #multiple users
-			try:
-				regex1 = re.compile('\((.*?)\)')
-				m = regex1.search(argstring)
-				username = m.groups()[0].split(' ') #extract users from argstring
-				regex2 = '('+m.groups()[0]+')'
-				message = re.sub(regex2,'',argstring).split(' ',1)[1] #extract message from argstring
-			except:
-				self.sock.send('wrong expression\n')
 				return
-		elif '(' not in argstring.split(' ')[0]: #private user
-			username = argstring.split(' ', 1)[0]
-			message = argstring.split(' ', 1)[1]
+		args = args.strip()
+		if args[0]!='(': #send user msg
+			username = args.split(' ', 1)[0]
+			try:
+				message = args.split(' ', 1)[1]
+			except:
+				try:
+					self.sock.send('wrong arguments\n')
+				except:
+					return
+			if username in loggedusername:
+				username = [username]
+			else:
+				try:
+					self.sock.send('user not available\n')
+				except:
+					return
 		else:
-			self.sock.send('wrong arguments\n')
-			return False
-		chatrecord[self.username]+=('send:' + argstring+'\n')
+			username = args[1:args.find(')')]
+			if args[args.find(')')+1] != ' ':
+				try:
+					self.sock.send('wrong arguments\n')
+				except:
+					return
+			else:
+				username = [x.strip() for x in username.split(' ')]
+				user_not_available = False
+				for user in username:
+					if user not in loggedusername:
+						user_not_available = True
+				if user_not_available:
+					try:
+						self.sock.send('user not available\n')
+					except:
+						return
+					return
+				message = args[args.find(')') + 2:]
+
+		chatrecord[self.username]+=('send:' + args +'\n')
 		for user in loggedin:  #only thos who logged in can get the message
 			if user.username in username:
-				user.sock.send(self.username + ' send:' + message+'\n')
-				chatrecord[user.username]+=(self.username + ' send:' + message+'\n')
+				try:
+					user.sock.send(self.username + ' send:' + message+'\n')
+					chatrecord[user.username]+=(self.username + ' send:' + message+'\n')
+				except:
+					pass
     
     # Log out this user
 	def hdlr_log_out(self):

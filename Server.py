@@ -6,8 +6,8 @@ import sys, os, re
 import mmap, threading, select, hashlib
 import time
 
-os.environ['BLOCK_TIME'] = '60'  # environment variable
-os.environ['TIME_OUT'] = '5'
+os.environ['BLOCK_TIME'] = '10'  # environment variable
+os.environ['TIME_OUT'] = '50'
 logout_time = {}  # record the time of last logout for each user in a dictionary
 loggedin = []  # record all the users that is logged in
 threads = []
@@ -52,58 +52,85 @@ class client_handler(threading.Thread):
 					self.timeout = True
 					return False	#return false when time_out occurs, upper level should quit
 
-	def login(self):
+	def login(self, re_password):
 		# if self.block == False:
-		self.sock.send("Please input username:\n")
-		username = self.get_data()
-		if not username:
-			return #stop the thread
-		if username not in passbook:	#user not exists
-			try:
-				self.sock.send("invalid username\n")
-			except:
-				return -1	#critical, to stop the thread
-			#self.hdlr_log_out()
-			return -2	#username not exist
-		#user blocked
-		if username in block_user and self.addr[0] == block_user[username][0] and time.time() - block_user[username][1] < BLOCK_TIME:
-			return
-		#user already log in
-		elif username in loggedusername:
-			self.sock.send('you have already loged in\n')
-			self.hdlr_log_out()
-			return 
+		if not re_password:
+			self.sock.send("Please input username:\n")
+			username = self.get_data()
+			if not username:
+				return -1 #stop the thread
+			if username not in passbook:	#user not exists
+				try:
+					self.sock.send("invalid username\n")
+				except:
+					return -1	#critical, to stop the thread
+				#self.hdlr_log_out()
+				return -2	#username not exist
+			#user blocked
+			if username in block_user:
+				if self.addr[0] == block_user[username][0]:
+					if time.time() - block_user[username][1] < BLOCK_TIME:
+						return -4
+			#user already log in
+			if username in loggedusername:
+				self.sock.send('you have already loged in\n')
+				self.hdlr_log_out()
+				return -1
+			self.username = username
+		try:
+			self.sock.send("Please input password:\n")
+		except:
+			return -1
+		password_client = self.get_data()
+		if not password_client:
+			return -1
+		hash_object = hashlib.sha1(password_client.encode('utf-8'))  # encrypt password to sha1
+		hex_dig = hash_object.hexdigest()
+		if hex_dig == passbook[self.username]:
+			logout_time[self.username] = None  # initialize the logout time of this user
+			self.Login = True  # change the Login status of this user
+			self.invalid = False
+			loggedin.append(self)  # add record of this user to threads
+			loggedusername.append(self.username)
+			return 0
 		else:
-			for trytime in range(3):
-				self.sock.send("Please input password:\n")
-				password_client = self.get_data()
-				hash_object = hashlib.sha1(password_client.encode('utf-8'))  # encrypt password to sha1
-				hex_dig = hash_object.hexdigest()
-				if hex_dig == passbook[username]:
-					self.username = username
-					logout_time[self.username] = None  # initialize the logout time of this user
-					self.Login = True  # change the Login status of this user
-					self.invalid = False
-					loggedin.append(self)  # add record of this user to threads
-					loggedusername.append(self.username)
-					return True
+			return -3	#pwd don't match
 			#self.hdlr_log_out() 
-			block_user[username] = [self.addr[0], time.time()]
-			print block_user[username][0]
-			print block_user[username][1]
-			return False
+
 
 	def login_with_block(self):		
 		self.sock.send("Login...\n")  # ??
+		trytime = 0
 		while True:
-			if self.login() and self.invalid == True:
-				return
-			elif self.Login and self.invalid == False:
-				self.sock.send('you have logged in\n')
-				return
-			#block_user[self.username] = [self.addr, time.time()]
-			self.sock.send('you have been blocked\n')
-			self.hdlr_log_out()
+			status = self.login(trytime)
+			if(status == 0):
+				try:
+					self.sock.send('you have logged in\n')
+					return 0
+				except:
+					return -1
+			if(status == -2):
+				continue
+			if(status == -3):
+				trytime += 1
+				if trytime ==3:
+					try:
+						self.sock.send('you have been blocked\n')
+					except:
+						return -1
+					self.hdlr_log_out()
+					block_user[self.username] = [self.addr[0], time.time()]
+					return -1
+				continue
+			if(status == -4):
+				try:
+					self.sock.send('you have been blocked\n')
+				except:
+					return -1
+				self.hdlr_log_out()
+				block_user[self.username] = [self.addr[0], time.time()]
+				return -1
+			return status
 
 	# display names of other connected users
 	def hdlr_who(self):
@@ -111,12 +138,22 @@ class client_handler(threading.Thread):
 		for user in loggedin:
 			if user.Login and user != self and user.invisible == False:
 				users = users + user.username + ' '
-		self.sock.send(users+'\n')
+		try:
+			self.sock.send(users+'\n')
+		except:
+			pass
 
 	# Displays name of those users connected within the last <number> minutes
 	def hdlr_last(self, args):
 		users = ''
-		minutes = int(''.join(args))
+		try:
+			minutes = int(args)
+		except:
+			try:
+				self.sock.send('wrong arguments\n')
+			except:
+				pass
+			return
 		if minutes >=0:
 			# seconds = 60*re.findall(r'<(.+?)>', args) # match all the text between <>            
 			seconds = 60 * minutes
@@ -128,28 +165,47 @@ class client_handler(threading.Thread):
 					if logout_time[user] and logout_time[user] > time.time() - seconds:
 						users += user + ' '
 				users += '\n'
-				self.sock.send(users)
+				try:
+					self.sock.send(users)
+				except:
+					pass
 			else:
-				self.sock.send('time out of range\n')
+				try:
+					self.sock.send('time out of range\n')
+				except:
+					pass
 		else:
-			self.sock.send('wrong arguments\n')
+			try:
+				self.sock.send('wrong arguments\n')
+			except:
+				pass
 
     # Broadcasts <message> to all connected users.
 	def hdlr_broadcast(self, args):
 		if args == None: #if only command
-			self.sock.send('wrong arguments\n')
-		else : #command + space + message
-			message = ''.join(args)
+			try:
+				self.sock.send('wrong arguments\n')
+			except:
+				pass
+		else: #command + space + message
+			message = args
 			chatrecord[self.username]+=('broadcast: ' + message+'\n')
 			for user in loggedin:
 				if user.Login and user != self:
-					user.sock.send(self.username + ' broadcast: ' + message+'\n')
-					chatrecord[user.username]+=(self.username + ':broadcast ' + message+'\n')
-			
+					try:
+						user.sock.send(self.username + ' broadcast: ' + message+'\n')
+						chatrecord[user.username]+=(self.username + ':broadcast ' + message+'\n')
+					except:
+						pass
 
 	#send messages
 	def hdlr_send(self, args):
-		argstring = ''.join(args)
+		argstring = args
+		if not args:
+			try:
+				self.sock.send('wrong arguments\n')
+			except:
+				pass
 		if '(' in argstring.split(' ')[0]: #multiple users
 			try:
 				regex1 = re.compile('\((.*?)\)')
@@ -211,43 +267,64 @@ class client_handler(threading.Thread):
 			self.sock.send('command does not exist\n')
 
 	def extract_cmd(self, data):
-		print data, type(data)
 		sp = data.split(' ', 1)    #upgrade to regex
 		if len(sp) > 1:
-			return sp[0], sp[1:]
+			return sp[0], sp[1]
 		else:
 			return sp[0], None
 
 	def hdlr_invisible(self):  # make the user invisible to other users
 		if not self.invisible:
 			self.invisible = True
-			self.sock.send('you are invisible now\n')
+			try:
+				self.sock.send('you are invisible now\n')
+			except:
+				pass
 		else:
-			self.sock.send('you are visible now\n')
+			try:
+				self.sock.send('you are invisible now\n')
+			except:
+				pass
 	def hdlr_visible(self):
 		if self.invisible:
 			self.invisible = False
-			self.sock.send('you are visible now\n')
+			try:
+				self.sock.send('you are visible now\n')
+			except:
+				pass
 		else:
-			self.sock.send('you are visible now\n')
+			try:
+				self.sock.send('you are visible now\n')
+			except:
+				pass
 
 	def hdlr_chatrecord(self):  # show the chatting record of the user
 		message = chatrecord[self.username]
-		self.sock.send('chat record is: \n' + message+'\n')
+		try:
+			self.sock.send('chat record is: \n' + message+'\n')
+		except:
+			pass
 
 	def cmd_handler(self):
-		self.sock.send('Command:\n')
+		try:
+			self.sock.send('Command:\n')
+		except:
+			return -1
 		data = self.get_data()
-
+		if data == False:
+			return -1
 		cmd, args = self.extract_cmd(data)
 		self.cmd_func(cmd, args)
+		return 0
 
 	def run(self):
-		self.login_with_block()
-		while self.username == '':
-			self.login_with_block()
+		status = self.login_with_block()
+		if (status == -1):
+			return
 		while self.Login:
-			self.cmd_handler()
+			status = self.cmd_handler()
+			if status == -1:
+				return
 
 
 def exit_gracefully(signum, frame):

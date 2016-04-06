@@ -15,7 +15,7 @@ def exit_gracefully(signum, frame):
 			sys.exit(1)
 	except KeyboardInterrupt:
 		print("Ok ok, quitting")
-		clientSocket.send('log_out')
+		clientSocket.send('logout')
 		clientSocket.close()	#close the socket connection
 		sys.exit(1)
 	# restore the exit gracefully handler here    

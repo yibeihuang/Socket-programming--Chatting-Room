@@ -99,7 +99,7 @@ class client_handler(threading.Thread):
 
 
 	def login_with_block(self):		
-		self.sock.send("Login...\n")  # ??
+		self.sock.send("Login...\n")  
 		trytime = 0
 		while True:
 			status = self.login(trytime)
@@ -206,7 +206,7 @@ class client_handler(threading.Thread):
 			except:
 				return
 		args = args.strip()
-		if args[0]!='(': #send user msg
+		if args[0]!='(': #send one user msg
 			username = args.split(' ', 1)[0]
 			try:
 				message = args.split(' ', 1)[1]
@@ -222,7 +222,7 @@ class client_handler(threading.Thread):
 					self.sock.send('user not available\n')
 				except:
 					return
-		else:
+		else:	#sned multiple users mesg
 			username = args[1:args.find(')')]
 			if args[args.find(')')+1] != ' ':
 				try:
@@ -309,7 +309,7 @@ class client_handler(threading.Thread):
 				self.sock.send('you are invisible now\n')
 			except:
 				pass
-	def hdlr_visible(self):
+	def hdlr_visible(self): # make the user visible to other users
 		if self.invisible:
 			self.invisible = False
 			try:
@@ -398,6 +398,5 @@ if __name__ == '__main__':
 
 # kill a thread when log out/ a socket close
 # kill a thread when client terminate the connection
-# if a client press ctrl+c, how would the threads in the server side terminates correspondingly,
 
 # http://blog.csdn.net/zhangzheng0413/article/details/41728869
